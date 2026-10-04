@@ -4,9 +4,9 @@
 ---
 
 ### Features
- - Ratelimit packet across disignated ports
- - Limit new connections
- - Ban an ip
+ - Ratelimit packets across designated ports
+ - Ratelimit new connections
+ - Ban an ip, exempt an ip
 
 ---
 

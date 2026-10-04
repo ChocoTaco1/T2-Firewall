@@ -1,5 +1,5 @@
 # T2 Firewall
-## A rewrite of a nftable firewall creaetd by Loop
+## A rewrite of a nftable firewall created by Loop
 
 ---
 

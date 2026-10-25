@@ -36,20 +36,31 @@ CHAIN="bitcrusher"
 
 ## Limits
 # New connections per second (an IP not seen within the conntrack timeout)
-NEW_LIMIT="5/second"
+NEW_LIMIT="10/second"
 # Harsher long window limit, e.g. "20/minute". Empty disables the rule.
 NEW_LIMIT_HARSH=""
 # Maximum packets per second from one IP
 # Multiple players behind one IP share this budget, so exempt them if needed.
 TICK_LIMIT="128/second"
 
+# Bursts: packets allowed back to back above the rate before the limit bites.
+# Without one nft uses 5, and normal network jitter (a Wi-Fi or ISP hiccup
+# delivering a few game packets at once) gets dropped as lag/rubber-banding.
+# NEW_BURST also applies to NEW_LIMIT_HARSH.
+NEW_BURST=256
+TICK_BURST=256
+
 # 1 = every port gets its own budget per IP (what the nine per-port scripts did)
 # 0 = one budget per IP shared across every port in PORTS
 PER_PORT_LIMIT=1
 
 # Rate tracking sets: how long an idle IP is remembered, and the element cap.
-# The cap is what stops a spoofed-source flood from eating memory.
-TRACK_TIMEOUT="1m"
+# The cap is what stops a spoofed-source flood from eating memory (an entry is
+# well under 1 KB, so 65535 is a few tens of MB at worst). When a set is full,
+# new IPs cannot be added and their packets skip the limit entirely, so keep
+# it far above players x ports: with PER_PORT_LIMIT=1 every player on every
+# server is its own entry.
+TRACK_TIMEOUT="30s"
 TRACK_SIZE=65535
 # Ban length, e.g. "1h". Empty means until you unban by hand.
 BAN_TIMEOUT=""
@@ -106,15 +117,15 @@ function create() {
 
 	# Connection flood, counted per IP
 	nft "add set ip $TABLE conn_tracker { type $KEY; flags dynamic,timeout; timeout $TRACK_TIMEOUT; size $TRACK_SIZE; }"
-	rule ct state new add @conn_tracker "{ $ELEM limit rate over $NEW_LIMIT }" $COUNTER drop
+	rule ct state new add @conn_tracker "{ $ELEM limit rate over $NEW_LIMIT burst $NEW_BURST packets }" $COUNTER drop
 	if [[ -n $NEW_LIMIT_HARSH ]]; then
 		nft "add set ip $TABLE conn_tracker_harsh { type $KEY; flags dynamic,timeout; timeout $TRACK_TIMEOUT; size $TRACK_SIZE; }"
-		rule ct state new add @conn_tracker_harsh "{ $ELEM limit rate over $NEW_LIMIT_HARSH }" $COUNTER drop
+		rule ct state new add @conn_tracker_harsh "{ $ELEM limit rate over $NEW_LIMIT_HARSH burst $NEW_BURST packets }" $COUNTER drop
 	fi
 
 	# Packet flood, counted per IP. Covers most single connection angles.
 	nft "add set ip $TABLE tick_tracker { type $KEY; flags dynamic,timeout; timeout $TRACK_TIMEOUT; size $TRACK_SIZE; }"
-	rule add @tick_tracker "{ $ELEM limit rate over $TICK_LIMIT }" $COUNTER drop
+	rule add @tick_tracker "{ $ELEM limit rate over $TICK_LIMIT burst $TICK_BURST packets }" $COUNTER drop
 }
 
 function reset() {
